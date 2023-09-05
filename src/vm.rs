@@ -414,9 +414,9 @@ pub enum CallableObject<'a, C: ContextObject> {
 ///
 /// let memory_mapping = MemoryMapping::new(regions, config, sbpf_version).unwrap();
 ///
-/// let mut vm = EbpfVm::new(vec![(CallableObject::User(&verified_executable), Vec::new())], &mut context_object, memory_mapping, stack_len).unwrap();
+/// let mut vm = EbpfVm::new(vec![(CallableObject::User(&executable), Vec::new())], &mut context_object, memory_mapping, stack_len).unwrap();
 ///
-/// let (instruction_count, result) = vm.execute_program(&executable, true);
+/// let (instruction_count, result) = vm.execute_program(0, true);
 /// assert_eq!(instruction_count, 1);
 /// assert_eq!(result.unwrap(), 0);
 /// ```
@@ -505,62 +505,89 @@ impl<'a, C: ContextObject> EbpfVm<'a, C> {
     /// If interpreted = `false` then the JIT compiled executable is used.
     pub fn execute_program(
         &mut self,
-        executable: &Executable<C>,
+        executable_index: usize,
         interpreted: bool,
     ) -> (u64, ProgramResult) {
-        let mut registers = [0u64; 12];
-        // R1 points to beginning of input memory, R10 to the stack of the first frame, R11 is the pc (hidden)
-        registers[1] = ebpf::MM_INPUT_START;
-        registers[ebpf::FRAME_PTR_REG] = self.stack_pointer;
-        registers[11] = executable.get_entrypoint_instruction_offset() as u64;
-        let config = executable.get_config();
-        let initial_insn_count = if config.enable_instruction_meter {
-            self.context_object_pointer.get_remaining()
-        } else {
-            0
-        };
+        let initial_insn_count = self.context_object_pointer.get_remaining();
         self.previous_instruction_meter = initial_insn_count;
         self.program_result = ProgramResult::Ok(0);
-        let due_insn_count = if interpreted {
-            #[cfg(feature = "debugger")]
-            let debug_port = self.debug_port.clone();
-            let mut interpreter = Interpreter::new(self, executable, registers);
-            #[cfg(feature = "debugger")]
-            if let Some(debug_port) = debug_port {
-                crate::debugger::execute(&mut interpreter, debug_port);
-            } else {
-                while interpreter.step() {}
-            }
-            #[cfg(not(feature = "debugger"))]
-            while interpreter.step() {}
-            interpreter.due_insn_count
-        } else {
-            #[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
-            {
-                let compiled_program = match executable
-                    .get_compiled_program()
-                    .ok_or_else(|| Box::new(EbpfError::JitNotCompiled))
-                {
-                    Ok(compiled_program) => compiled_program,
-                    Err(error) => return (0, ProgramResult::Err(error)),
+        match self.executables[executable_index].0 {
+            CallableObject::Builtin(builtin) => {
+                let key = 0; // TODO
+                let builtin_function = match builtin.get_function_registry().lookup_by_key(key) {
+                    Some((_name, builtin_function)) => builtin_function,
+                    None => {
+                        return (
+                            0,
+                            ProgramResult::Err(EbpfError::InvalidInstruction(0).into()),
+                        )
+                    }
                 };
-                let instruction_meter_final =
-                    compiled_program.invoke(config, self, registers).max(0) as u64;
-                self.context_object_pointer
-                    .get_remaining()
-                    .saturating_sub(instruction_meter_final)
+                builtin_function(
+                    self.context_object_pointer,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    &mut self.memory_mapping,
+                    &mut self.program_result,
+                );
             }
-            #[cfg(not(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64")))]
-            {
-                return (0, ProgramResult::Err(Box::new(EbpfError::JitNotCompiled)));
+            CallableObject::User(executable) => {
+                let mut registers = [0u64; 12];
+                // R1 points to beginning of input memory, R10 to the stack of the first frame, R11 is the pc (hidden)
+                registers[1] = ebpf::MM_INPUT_START;
+                registers[ebpf::FRAME_PTR_REG] = self.stack_pointer;
+                registers[11] = executable.get_entrypoint_instruction_offset() as u64;
+                let config = executable.get_config();
+                let due_insn_count = if interpreted {
+                    #[cfg(feature = "debugger")]
+                    let debug_port = self.debug_port.clone();
+                    let mut interpreter = Interpreter::new(self, executable, registers);
+                    #[cfg(feature = "debugger")]
+                    if let Some(debug_port) = debug_port {
+                        crate::debugger::execute(&mut interpreter, debug_port);
+                    } else {
+                        while interpreter.step() {}
+                    }
+                    #[cfg(not(feature = "debugger"))]
+                    while interpreter.step() {}
+                    interpreter.due_insn_count
+                } else {
+                    #[cfg(all(
+                        feature = "jit",
+                        not(target_os = "windows"),
+                        target_arch = "x86_64"
+                    ))]
+                    {
+                        let compiled_program = match executable
+                            .get_compiled_program()
+                            .ok_or_else(|| Box::new(EbpfError::JitNotCompiled))
+                        {
+                            Ok(compiled_program) => compiled_program,
+                            Err(error) => return (0, ProgramResult::Err(error)),
+                        };
+                        let instruction_meter_final =
+                            compiled_program.invoke(config, self, registers).max(0) as u64;
+                        self.context_object_pointer
+                            .get_remaining()
+                            .saturating_sub(instruction_meter_final)
+                    }
+                    #[cfg(not(all(
+                        feature = "jit",
+                        not(target_os = "windows"),
+                        target_arch = "x86_64"
+                    )))]
+                    {
+                        return (0, ProgramResult::Err(Box::new(EbpfError::JitNotCompiled)));
+                    }
+                };
+                self.context_object_pointer.consume(due_insn_count);
             }
-        };
-        let instruction_count = if config.enable_instruction_meter {
-            self.context_object_pointer.consume(due_insn_count);
-            initial_insn_count.saturating_sub(self.context_object_pointer.get_remaining())
-        } else {
-            0
-        };
+        }
+        let instruction_count =
+            initial_insn_count.saturating_sub(self.context_object_pointer.get_remaining());
         let mut result = ProgramResult::Ok(0);
         std::mem::swap(&mut result, &mut self.program_result);
         (instruction_count, result)

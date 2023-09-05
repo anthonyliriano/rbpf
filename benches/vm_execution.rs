@@ -41,7 +41,7 @@ fn bench_init_interpreter_start(bencher: &mut Bencher) {
     );
     bencher.iter(|| {
         vm.context_object_pointer.remaining = 37;
-        vm.execute_program(&executable, true).1.unwrap()
+        vm.execute_program(0, true).1.unwrap()
     });
 }
 
@@ -68,7 +68,7 @@ fn bench_init_jit_start(bencher: &mut Bencher) {
     );
     bencher.iter(|| {
         vm.context_object_pointer.remaining = 37;
-        vm.execute_program(&executable, false).1.unwrap()
+        vm.execute_program(0, false).1.unwrap()
     });
 }
 
@@ -105,7 +105,7 @@ fn bench_jit_vs_interpreter(
         .bench(|bencher| {
             bencher.iter(|| {
                 vm.context_object_pointer.remaining = instruction_meter;
-                let (instruction_count_interpreter, result) = vm.execute_program(&executable, true);
+                let (instruction_count_interpreter, result) = vm.execute_program(0, true);
                 assert!(result.is_ok(), "{:?}", result);
                 assert_eq!(instruction_count_interpreter, instruction_meter);
             });
@@ -117,7 +117,7 @@ fn bench_jit_vs_interpreter(
         .bench(|bencher| {
             bencher.iter(|| {
                 vm.context_object_pointer.remaining = instruction_meter;
-                let (instruction_count_jit, result) = vm.execute_program(&executable, false);
+                let (instruction_count_jit, result) = vm.execute_program(0, false);
                 assert!(result.is_ok(), "{:?}", result);
                 assert_eq!(instruction_count_jit, instruction_meter);
             });

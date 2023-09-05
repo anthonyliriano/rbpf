@@ -211,8 +211,10 @@ fn main() {
     if matches.value_of("use").unwrap() == "debugger" {
         vm.debug_port = Some(matches.value_of("port").unwrap().parse::<u16>().unwrap());
     }
-    let (instruction_count, result) =
-        vm.execute_program(&executable, matches.value_of("use").unwrap() != "jit");
+    let (instruction_count, result) = vm.execute_program(
+        0,
+        matches.value_of("use").unwrap() != "jit",
+    );
     println!("Result: {result:?}");
     println!("Instruction Count: {instruction_count}");
     if matches.is_present("trace") {
