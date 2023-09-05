@@ -361,6 +361,14 @@ pub struct CallFrame {
     pub target_pc: usize,
 }
 
+/// Unifies built-ins and user provided program
+pub enum CallableObject<'a, C: ContextObject> {
+    /// A built-in program
+    Builtin(&'a BuiltinProgram<C>),
+    /// A user provided program
+    User(&'a Executable<C>),
+}
+
 /// A virtual machine to run eBPF programs.
 ///
 /// # Examples
@@ -372,7 +380,7 @@ pub struct CallFrame {
 ///     elf::{Executable, FunctionRegistry, SBPFVersion},
 ///     memory_region::{MemoryMapping, MemoryRegion},
 ///     verifier::{RequisiteVerifier},
-///     vm::{BuiltinProgram, Config, EbpfVm, TestContextObject},
+///     vm::{BuiltinProgram, CallableObject, Config, EbpfVm, TestContextObject},
 /// };
 ///
 /// let prog = &[
@@ -406,7 +414,7 @@ pub struct CallFrame {
 ///
 /// let memory_mapping = MemoryMapping::new(regions, config, sbpf_version).unwrap();
 ///
-/// let mut vm = EbpfVm::new(config, sbpf_version, &mut context_object, memory_mapping, stack_len);
+/// let mut vm = EbpfVm::new(vec![(CallableObject::User(&verified_executable), Vec::new())], &mut context_object, memory_mapping, stack_len).unwrap();
 ///
 /// let (instruction_count, result) = vm.execute_program(&executable, true);
 /// assert_eq!(instruction_count, 1);
@@ -442,6 +450,8 @@ pub struct EbpfVm<'a, C: ContextObject> {
     pub memory_mapping: MemoryMapping<'a>,
     /// Stack of CallFrames used by the Interpreter
     pub call_frames: Vec<CallFrame>,
+    /// Table of dynamically linked executables to dispatch from
+    pub executables: Vec<(CallableObject<'a, C>, Vec<CallableObject<'a, C>>)>,
     /// TCP port for the debugger interface
     #[cfg(feature = "debugger")]
     pub debug_port: Option<u16>,
@@ -450,12 +460,18 @@ pub struct EbpfVm<'a, C: ContextObject> {
 impl<'a, C: ContextObject> EbpfVm<'a, C> {
     /// Creates a new virtual machine instance.
     pub fn new(
-        config: &Config,
-        sbpf_version: &SBPFVersion,
+        // executables: &'a [(&'a [u8], CallableObject<'a, V, C>)],
+        executables: Vec<(CallableObject<'a, C>, Vec<CallableObject<'a, C>>)>,
         context_object: &'a mut C,
         mut memory_mapping: MemoryMapping<'a>,
         stack_len: usize,
-    ) -> Self {
+    ) -> Result<Self, EbpfError> {
+        let executable = match executables[0].0 {
+            CallableObject::User(executable) => executable,
+            _ => return Err(EbpfError::InvalidVMSetup),
+        };
+        let config = executable.get_config();
+        let sbpf_version = executable.get_sbpf_version();
         let stack_pointer =
             ebpf::MM_STACK_START.saturating_add(if sbpf_version.dynamic_stack_frames() {
                 // the stack is fully descending, frames start as empty and change size anytime r11 is modified
@@ -467,7 +483,7 @@ impl<'a, C: ContextObject> EbpfVm<'a, C> {
         if !config.enable_address_translation {
             memory_mapping = MemoryMapping::new_identity();
         }
-        EbpfVm {
+        Ok(EbpfVm {
             host_stack_pointer: std::ptr::null_mut(),
             call_depth: 0,
             stack_pointer,
@@ -478,9 +494,10 @@ impl<'a, C: ContextObject> EbpfVm<'a, C> {
             program_result: ProgramResult::Ok(0),
             memory_mapping,
             call_frames: vec![CallFrame::default(); config.max_call_depth],
+            executables,
             #[cfg(feature = "debugger")]
             debug_port: None,
-        }
+        })
     }
 
     /// Execute the program

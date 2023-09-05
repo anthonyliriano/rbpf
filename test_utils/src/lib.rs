@@ -208,12 +208,11 @@ macro_rules! create_vm {
         )
         .unwrap();
         let mut $vm_name = solana_rbpf::vm::EbpfVm::new(
-            $verified_executable.get_config(),
-            $verified_executable.get_sbpf_version(),
+            vec![(solana_rbpf::vm::CallableObject::User($verified_executable), Vec::new())],
             $context_object,
             memory_mapping,
             stack_len,
-        );
+        ).unwrap();
     };
 }
 

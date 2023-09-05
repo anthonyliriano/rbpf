@@ -7,7 +7,7 @@ use solana_rbpf::{
     memory_region::{MemoryMapping, MemoryRegion},
     static_analysis::Analysis,
     verifier::RequisiteVerifier,
-    vm::{BuiltinProgram, Config, DynamicAnalysis, EbpfVm, TestContextObject},
+    vm::{BuiltinProgram, CallableObject, Config, DynamicAnalysis, EbpfVm, TestContextObject},
 };
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 
@@ -170,12 +170,12 @@ fn main() {
     let memory_mapping = MemoryMapping::new(regions, config, sbpf_version).unwrap();
 
     let mut vm = EbpfVm::new(
-        executable.get_config(),
-        executable.get_sbpf_version(),
+        vec![(CallableObject::User(&verified_executable), Vec::new())],
         &mut context_object,
         memory_mapping,
         stack_len,
-    );
+    )
+    .unwrap();
 
     let analysis = if matches.value_of("use") == Some("cfg")
         || matches.value_of("use") == Some("disassembler")

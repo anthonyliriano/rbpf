@@ -86,4 +86,7 @@ pub enum EbpfError {
     /// Verifier error
     #[error("Verifier error: {0}")]
     VerifierError(#[from] VerifierError),
+    /// Invalid VM setup
+    #[error("Invalid VM setup")]
+    InvalidVMSetup,
 }

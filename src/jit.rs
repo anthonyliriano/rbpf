@@ -1625,7 +1625,7 @@ mod tests {
     use crate::{
         elf::{FunctionRegistry, SBPFVersion},
         syscalls,
-        vm::{BuiltinFunction, BuiltinProgram, TestContextObject},
+        vm::{BuiltinFunction, BuiltinProgram, CallableObject, TestContextObject},
     };
     use byteorder::{ByteOrder, LittleEndian};
     use std::sync::Arc;
@@ -1635,12 +1635,12 @@ mod tests {
         let executable = create_mockup_executable(&[]);
         let mut context_object = TestContextObject::new(0);
         let env = EbpfVm::new(
-            executable.get_config(),
-            executable.get_sbpf_version(),
+            vec![(CallableObject::User(&executable), Vec::new())],
             &mut context_object,
             MemoryMapping::new_identity(),
             0,
-        );
+        )
+        .unwrap();
 
         macro_rules! check_slot {
             ($env:expr, $entry:ident, $slot:ident) => {
