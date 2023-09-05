@@ -9,7 +9,7 @@ use solana_rbpf::{
     elf::{Executable, FunctionRegistry, SBPFVersion},
     memory_region::MemoryRegion,
     verifier::{RequisiteVerifier, Verifier},
-    vm::{BuiltinProgram, TestContextObject},
+    vm::{BuiltinProgram, SBPFV1_ARGUMENTS, TestContextObject},
 };
 use test_utils::create_vm;
 
@@ -52,6 +52,6 @@ fuzz_target!(|data: DumbFuzzData| {
         None
     );
 
-    let (_interp_ins_count, interp_res) = interp_vm.execute_program(0, true);
+    let (_interp_ins_count, interp_res) = interp_vm.dispatch(0, SBPFV1_ARGUMENTS, true);
     drop(black_box(interp_res));
 });

@@ -14,7 +14,7 @@ use solana_rbpf::{
     elf::{Executable, FunctionRegistry},
     memory_region::MemoryRegion,
     verifier::RequisiteVerifier,
-    vm::{BuiltinProgram, Config, TestContextObject},
+    vm::{BuiltinProgram, Config, TestContextObject, SBPFV1_ARGUMENTS},
 };
 use std::{fs::File, io::Read, sync::Arc};
 use test::Bencher;
@@ -41,7 +41,7 @@ fn bench_init_interpreter_start(bencher: &mut Bencher) {
     );
     bencher.iter(|| {
         vm.context_object_pointer.remaining = 37;
-        vm.execute_program(0, true).1.unwrap()
+        vm.dispatch(0, SBPFV1_ARGUMENTS, true).1.unwrap()
     });
 }
 
@@ -68,7 +68,7 @@ fn bench_init_jit_start(bencher: &mut Bencher) {
     );
     bencher.iter(|| {
         vm.context_object_pointer.remaining = 37;
-        vm.execute_program(0, false).1.unwrap()
+        vm.dispatch(0, SBPFV1_ARGUMENTS, false).1.unwrap()
     });
 }
 
@@ -105,7 +105,8 @@ fn bench_jit_vs_interpreter(
         .bench(|bencher| {
             bencher.iter(|| {
                 vm.context_object_pointer.remaining = instruction_meter;
-                let (instruction_count_interpreter, result) = vm.execute_program(0, true);
+                let (instruction_count_interpreter, result) =
+                    vm.dispatch(0, SBPFV1_ARGUMENTS, true);
                 assert!(result.is_ok(), "{:?}", result);
                 assert_eq!(instruction_count_interpreter, instruction_meter);
             });
@@ -117,7 +118,7 @@ fn bench_jit_vs_interpreter(
         .bench(|bencher| {
             bencher.iter(|| {
                 vm.context_object_pointer.remaining = instruction_meter;
-                let (instruction_count_jit, result) = vm.execute_program(0, false);
+                let (instruction_count_jit, result) = vm.dispatch(0, SBPFV1_ARGUMENTS, false);
                 assert!(result.is_ok(), "{:?}", result);
                 assert_eq!(instruction_count_jit, instruction_meter);
             });

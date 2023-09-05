@@ -11,7 +11,7 @@ use solana_rbpf::{
     static_analysis::Analysis,
     verifier::{RequisiteVerifier, Verifier},
     vm::{
-        BuiltinProgram, ContextObject, TestContextObject,
+        BuiltinProgram, ContextObject, SBPFV1_ARGUMENTS, TestContextObject,
     },
 };
 use test_utils::create_vm;
@@ -76,8 +76,8 @@ fuzz_target!(|data: FuzzData| {
             None
         );
 
-        let (_interp_ins_count, interp_res) = interp_vm.execute_program(0, true);
-        let (_jit_ins_count, jit_res) = jit_vm.execute_program(0, false);
+        let (_interp_ins_count, interp_res) = interp_vm.dispatch(0, SBPFV1_ARGUMENTS, true);
+        let (_jit_ins_count, jit_res) = jit_vm.dispatch(0, SBPFV1_ARGUMENTS, false);
         let interp_res_str = format!("{:?}", interp_res);
         let jit_res_str = format!("{:?}", jit_res);
         if interp_res_str != jit_res_str {

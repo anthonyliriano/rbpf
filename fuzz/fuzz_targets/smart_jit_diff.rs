@@ -9,7 +9,7 @@ use solana_rbpf::{
     insn_builder::{Arch, Instruction, IntoBytes},
     memory_region::MemoryRegion,
     verifier::{RequisiteVerifier, Verifier},
-    vm::{BuiltinProgram, TestContextObject},
+    vm::{BuiltinProgram, SBPFV1_ARGUMENTS, TestContextObject},
 };
 use test_utils::create_vm;
 
@@ -77,8 +77,8 @@ fuzz_target!(|data: FuzzData| {
             None
         );
 
-        let (_interp_ins_count, interp_res) = interp_vm.execute_program(0, true);
-        let (_jit_ins_count, jit_res) = jit_vm.execute_program(0, false);
+        let (_interp_ins_count, interp_res) = interp_vm.dispatch(0, SBPFV1_ARGUMENTS, true);
+        let (_jit_ins_count, jit_res) = jit_vm.dispatch(0, SBPFV1_ARGUMENTS, false);
         if format!("{:?}", interp_res) != format!("{:?}", jit_res) {
             panic!("Expected {:?}, but got {:?}", interp_res, jit_res);
         }

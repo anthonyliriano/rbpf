@@ -26,6 +26,7 @@ use solana_rbpf::{
     verifier::RequisiteVerifier,
     vm::{
         BuiltinFunction, BuiltinProgram, Config, ContextObject, ProgramResult, TestContextObject,
+        SBPFV1_ARGUMENTS,
     },
 };
 use std::{fs::File, io::Read, sync::Arc};
@@ -63,7 +64,7 @@ macro_rules! test_interpreter_and_jit {
                 vec![mem_region],
                 None
             );
-            let (instruction_count_interpreter, result) = vm.execute_program(0, true);
+            let (instruction_count_interpreter, result) = vm.dispatch(0, SBPFV1_ARGUMENTS, true);
             assert_eq!(format!("{:?}", result), expected_result);
             if result.is_ok() {
                 assert_eq!(
@@ -94,7 +95,7 @@ macro_rules! test_interpreter_and_jit {
             match compilation_result {
                 Err(err) => assert_eq!(format!("{:?}", err), expected_result),
                 Ok(()) => {
-                    let (instruction_count_jit, result) = vm.execute_program(0, false);
+                    let (instruction_count_jit, result) = vm.dispatch(0, SBPFV1_ARGUMENTS, false);
                     let tracer_jit = &vm.context_object_pointer;
                     assert_eq!(format!("{:?}", result), expected_result);
                     if !TestContextObject::compare_trace_log(&_tracer_interpreter, tracer_jit) {

@@ -369,6 +369,9 @@ pub enum CallableObject<'a, C: ContextObject> {
     User(&'a Executable<C>),
 }
 
+/// Default arguments for the entrypoint in SBPFv1
+pub const SBPFV1_ARGUMENTS: [u64; 5] = [ebpf::MM_INPUT_START, 0, 0, 0, 0];
+
 /// A virtual machine to run eBPF programs.
 ///
 /// # Examples
@@ -380,7 +383,7 @@ pub enum CallableObject<'a, C: ContextObject> {
 ///     elf::{Executable, FunctionRegistry, SBPFVersion},
 ///     memory_region::{MemoryMapping, MemoryRegion},
 ///     verifier::{RequisiteVerifier},
-///     vm::{BuiltinProgram, CallableObject, Config, EbpfVm, TestContextObject},
+///     vm::{BuiltinProgram, CallableObject, Config, EbpfVm, SBPFV1_ARGUMENTS, TestContextObject},
 /// };
 ///
 /// let prog = &[
@@ -416,7 +419,7 @@ pub enum CallableObject<'a, C: ContextObject> {
 ///
 /// let mut vm = EbpfVm::new(vec![(CallableObject::User(&executable), Vec::new())], &mut context_object, memory_mapping, stack_len).unwrap();
 ///
-/// let (instruction_count, result) = vm.execute_program(0, true);
+/// let (instruction_count, result) = vm.dispatch(0, SBPFV1_ARGUMENTS, true);
 /// assert_eq!(instruction_count, 1);
 /// assert_eq!(result.unwrap(), 0);
 /// ```
@@ -503,9 +506,10 @@ impl<'a, C: ContextObject> EbpfVm<'a, C> {
     /// Execute the program
     ///
     /// If interpreted = `false` then the JIT compiled executable is used.
-    pub fn execute_program(
+    pub fn dispatch(
         &mut self,
         executable_index: usize,
+        arguments: [u64; 5],
         interpreted: bool,
     ) -> (u64, ProgramResult) {
         let initial_insn_count = self.context_object_pointer.get_remaining();
@@ -525,21 +529,30 @@ impl<'a, C: ContextObject> EbpfVm<'a, C> {
                 };
                 builtin_function(
                     self.context_object_pointer,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
+                    arguments[0],
+                    arguments[1],
+                    arguments[2],
+                    arguments[3],
+                    arguments[4],
                     &mut self.memory_mapping,
                     &mut self.program_result,
                 );
             }
             CallableObject::User(executable) => {
-                let mut registers = [0u64; 12];
-                // R1 points to beginning of input memory, R10 to the stack of the first frame, R11 is the pc (hidden)
-                registers[1] = ebpf::MM_INPUT_START;
-                registers[ebpf::FRAME_PTR_REG] = self.stack_pointer;
-                registers[11] = executable.get_entrypoint_instruction_offset() as u64;
+                let registers = [
+                    0u64,
+                    arguments[0],
+                    arguments[1],
+                    arguments[2],
+                    arguments[3],
+                    arguments[4],
+                    0u64,
+                    0u64,
+                    0u64,
+                    0u64,
+                    self.stack_pointer,
+                    executable.get_entrypoint_instruction_offset() as u64,
+                ];
                 let config = executable.get_config();
                 let due_insn_count = if interpreted {
                     #[cfg(feature = "debugger")]

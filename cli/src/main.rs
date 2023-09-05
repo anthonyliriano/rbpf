@@ -7,7 +7,7 @@ use solana_rbpf::{
     memory_region::{MemoryMapping, MemoryRegion},
     static_analysis::Analysis,
     verifier::RequisiteVerifier,
-    vm::{BuiltinProgram, CallableObject, Config, DynamicAnalysis, EbpfVm, TestContextObject},
+    vm::{BuiltinProgram, CallableObject, Config, DynamicAnalysis, EbpfVm, TestContextObject, SBPFV1_ARGUMENTS},
 };
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 
@@ -211,8 +211,9 @@ fn main() {
     if matches.value_of("use").unwrap() == "debugger" {
         vm.debug_port = Some(matches.value_of("port").unwrap().parse::<u16>().unwrap());
     }
-    let (instruction_count, result) = vm.execute_program(
+    let (instruction_count, result) = vm.dispatch(
         0,
+        SBPFV1_ARGUMENTS,
         matches.value_of("use").unwrap() != "jit",
     );
     println!("Result: {result:?}");
